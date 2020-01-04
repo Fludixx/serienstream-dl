@@ -89,7 +89,7 @@ fn main() {
                 .long("episode")
                 .help("Downloads 1 episode, --episode 1,0")
                 .conflicts_with("series")
-                .conflicts_with("series")
+                .conflicts_with("season")
                 .takes_value(true),
         )
         .arg(
