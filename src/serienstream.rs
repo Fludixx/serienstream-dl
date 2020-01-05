@@ -119,7 +119,6 @@ impl Account {
                         Regex::new(r#"(https://s.to/registrierung/\?verification=[a-zA-Z0-9]+)""#)
                             .unwrap();
                     let url = r.captures(text.as_str()).unwrap().get(1).unwrap().as_str();
-                    println!("{}", url);
                     println!("[*] Finishing Account creation");
                     reqwest::get(url).unwrap();
                     return Some(Account {
@@ -154,9 +153,9 @@ impl Series {
         let id_regex = Regex::new("series-id=\"(\\d+)\"").unwrap();
         let result = id_regex
             .captures(r.as_str())
-            .unwrap()
+            .expect("Series not found")
             .get(1)
-            .unwrap()
+            .expect("Site Malformed?")
             .as_str();
         Series {
             id: result.parse::<u32>().unwrap(),
@@ -171,7 +170,7 @@ impl Series {
     }
 
     pub fn get_season_count(&self) -> u32 {
-        let mut i = 0;
+        let mut i = 1;
         loop {
             let r = reqwest::get(
                 format!(
@@ -331,7 +330,6 @@ impl StreamHoster {
             return None;
         }
         println!("[*] Logged in into: {}", acc.email.to_string());
-        println!("    login_key: {}", login_key);
         println!("[*] Resolving real location from: {}", self.url);
         let r = reqwest::Client::new()
             .post(self.url.clone().as_str())
@@ -340,7 +338,7 @@ impl StreamHoster {
             .unwrap();
         let url = r.url().as_str();
         if url.contains("s.to") {
-            println!("[*] Account exceeded limit");
+            println!("[!] Account exceeded limit");
             return None;
         }
         println!("[*] Resolved real location: {}", url);
