@@ -228,7 +228,9 @@ fn download_season(s: Series, raw: &str) -> Vec<String> {
     let season_len = s.get_season(season).get_episode_count();
     for e in 0..season_len {
         let vec = download_episode(s.clone(), format!("{},{}", season, e).as_str());
-        urls.push(vec[0].clone());
+        if !vec.is_empty() {
+            urls.push(vec[0].clone());
+        }
     }
     urls
 }
@@ -249,8 +251,11 @@ fn download_episode(s: Series, raw: &str) -> Vec<String> {
     let url = s
         .get_season(season)
         .get_episode(episode)
-        .get_stream_url()
-        .get_site_url(acc.clone());
+        .get_stream_url();
+    if url.is_none() {
+        return urls.clone();
+    }
+    let url = url.unwrap().get_site_url(acc);
     match url {
         None => download_episode(s, raw),
         Some(url) => {

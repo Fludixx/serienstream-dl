@@ -53,7 +53,7 @@ pub struct StreamHoster {
     pub name: String,
     pub url: String,
     pub language: Language,
-    pub episode: Episode,
+    pub episode: Episode
 }
 
 #[derive(Clone)]
@@ -144,7 +144,7 @@ impl Series {
                 SITE,
                 name.to_ascii_lowercase().replace(" ", "-")
             )
-            .as_str(),
+                .as_str(),
         )
     }
 
@@ -177,11 +177,11 @@ impl Series {
                     "{}series/get?series={}&season={}&key={}",
                     ENDPOINT, self.id, i, TOKEN
                 )
-                .as_str(),
+                    .as_str(),
             )
-            .unwrap()
-            .text()
-            .unwrap();
+                .unwrap()
+                .text()
+                .unwrap();
             if r.starts_with("{") {
                 // if we get a valid json response the season exists
                 i += 1;
@@ -204,11 +204,11 @@ impl Season {
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-            .as_str(),
+                .as_str(),
         )
-        .unwrap()
-        .text()
-        .unwrap();
+            .unwrap()
+            .text()
+            .unwrap();
         let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
         format!(
             "{}/serie/stream/{}",
@@ -231,11 +231,11 @@ impl Season {
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-            .as_str(),
+                .as_str(),
         )
-        .unwrap()
-        .text()
-        .unwrap();
+            .unwrap()
+            .text()
+            .unwrap();
         let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
         let episodes_string: String = json["episodes"].clone().to_string();
         let episode_regex = Regex::new("\"episode\":\\d+").unwrap();
@@ -257,11 +257,11 @@ impl Episode {
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-            .as_str(),
+                .as_str(),
         )
-        .unwrap()
-        .text()
-        .unwrap();
+            .unwrap()
+            .text()
+            .unwrap();
         let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
         format!(
             "{}/serie/stream/{}/staffel-{}/episode-{}",
@@ -272,25 +272,33 @@ impl Episode {
         )
     }
 
-    pub fn get_stream_url(&self) -> StreamHoster {
+    pub fn get_stream_url(&self) -> Option<StreamHoster> {
         let raw_json = reqwest::get(
             format!(
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-            .as_str(),
+                .as_str(),
         )
-        .unwrap()
-        .text()
-        .unwrap();
-        let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
+            .unwrap()
+            .text()
+            .unwrap();
+        let json = serde_json::from_str(raw_json.as_str());
+        if json.is_err() {
+            return None;
+        }
+        let json: Value = json.unwrap();
         let streamer = json["episodes"][self.episode as usize]["links"][0].clone();
+        let link = streamer["link"].as_str();
+        if link.is_none() {
+            return None;
+        }
         let id_regex = Regex::new(r#"\d{2,9}"#).unwrap();
         let id = id_regex
-            .find(streamer["link"].as_str().unwrap())
+            .find(link.unwrap())
             .unwrap()
             .as_str();
-        StreamHoster {
+        Some(StreamHoster {
             name: streamer["hoster"].as_str().unwrap().to_string(),
             url: format!("{}/redirect/{}", SITE, id),
             language: Language::from_number(streamer["language"].as_i64().unwrap()),
@@ -299,7 +307,7 @@ impl Episode {
                 season: self.season,
                 episode: self.episode,
             },
-        }
+        })
     }
 }
 
