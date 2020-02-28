@@ -1,6 +1,7 @@
 use crate::email::Email;
 use crate::serienstream::{Account, Language, Series};
 use clap::{App, Arg};
+use colored::Colorize;
 use rand::distributions::Alphanumeric;
 use rand::prelude::SliceRandom;
 use rand::{thread_rng, Rng};
@@ -8,7 +9,9 @@ use std::fs::{create_dir, read_to_string, File, OpenOptions};
 use std::io::Write;
 use std::process::{exit, Command};
 use std::str::FromStr;
-use colored::Colorize;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 mod email;
 mod proxy;
@@ -106,13 +109,43 @@ fn main() {
                 .help("Generates Accounts")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("threads")
+                .long("threads")
+                .short("t")
+                .help("Specify how many threads should be used to generate Accounts")
+                .takes_value(true),
+        )
         .get_matches();
 
     if matches.is_present("generate") {
+        let threads;
+        if matches.is_present("threads") {
+            threads = u32::from_str(matches.value_of("threads").unwrap()).unwrap();
+        } else {
+            threads = 1;
+        }
         let raw = matches.value_of("generate").unwrap();
         let amount = u32::from_str(raw).unwrap();
-        File::create("accounts.txt");
-        generate_account(amount);
+        if File::open("accounts.txt").is_err() {
+            File::create("accounts.txt");
+        }
+        let mut handles = Vec::new();
+        for i in 0..threads {
+            println!("Starting thread: #{}...", i);
+            let builder = thread::Builder::new();
+            handles.push(
+                builder
+                    .name(format!("{}", i))
+                    .spawn(move || {
+                        generate_account(amount);
+                    })
+                    .unwrap(),
+            );
+        }
+        for handle in handles {
+            handle.join();
+        }
         exit(0);
     }
 
@@ -249,10 +282,7 @@ fn download_episode(s: Series, raw: &str) -> Vec<String> {
     let info: Vec<&str> = raw.split(",").collect();
     let season = u32::from_str(info[0]).unwrap();
     let episode = u32::from_str(info[1]).unwrap();
-    let url = s
-        .get_season(season)
-        .get_episode(episode)
-        .get_stream_url();
+    let url = s.get_season(season).get_episode(episode).get_stream_url();
     if url.is_none() {
         return urls.clone();
     }

@@ -1,7 +1,7 @@
+use colored::Colorize;
 use rand::prelude::*;
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
-use colored::Colorize;
 
 #[derive(Clone)]
 pub struct Email {
@@ -46,7 +46,6 @@ impl Email {
     }
 
     pub fn get_email(&self) -> Option<String> {
-        println!("Fetching emails of: {}", self.to_string().as_str().bright_blue());
         let raw = reqwest::get(
             format!(
                 "https://api4.temp-mail.org/request/mail/id/{}/format/json",

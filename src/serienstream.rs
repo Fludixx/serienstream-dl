@@ -1,13 +1,13 @@
 use crate::email::Email;
 use crate::proxy::HttpsProxy;
+use colored::Colorize;
 use regex::Regex;
 use reqwest::cookie::Cookie;
 use reqwest::Proxy;
 use serde_json::Value;
+use std::ops::Add;
 use std::thread;
 use std::time::Duration;
-use colored::Colorize;
-use std::ops::Add;
 
 pub const TOKEN: &str = "9bmkkkvloi4o10pnel886l1xj6ztycualnmofbkrsfzsmc26lrujoesptp8aqw";
 pub const ENDPOINT: &str = "https://s.to/api/v1/";
@@ -55,7 +55,7 @@ pub struct StreamHoster {
     pub name: String,
     pub url: String,
     pub language: Language,
-    pub episode: Episode
+    pub episode: Episode,
 }
 
 #[derive(Clone)]
@@ -79,8 +79,13 @@ impl Account {
     pub fn create(name: String, email: Email, password: String) -> Option<Account> {
         let proxy_info = HttpsProxy::new();
         println!(
-            "Using proxy: {}...",
-            format!("{}:{}", proxy_info.address, proxy_info.port).as_str().bright_blue()
+            "{}Using proxy: {}...",
+            format!("[Thread:{}]", thread::current().name().unwrap())
+                .as_str()
+                .bright_purple(),
+            format!("{}:{}", proxy_info.address, proxy_info.port)
+                .as_str()
+                .bright_blue()
         );
         let proxy =
             Proxy::https(format!("http://{}:{}", proxy_info.address, proxy_info.port).as_str())
@@ -106,6 +111,13 @@ impl Account {
         let mut r = r.unwrap();
         let mut looped: u16 = 0;
         loop {
+            println!(
+                "{}Fetching emails of: {}",
+                format!("[Thread:{}]", thread::current().name().unwrap())
+                    .as_str()
+                    .bright_purple(),
+                email.to_string().as_str().bright_blue()
+            );
             match email.get_email() {
                 None => {
                     if looped > 14 {
@@ -121,7 +133,13 @@ impl Account {
                         Regex::new(r#"(https://s.to/registrierung/\?verification=[a-zA-Z0-9]+)""#)
                             .unwrap();
                     let url = r.captures(text.as_str()).unwrap().get(1).unwrap().as_str();
-                    println!("{}", "Finishing Account creation...".yellow());
+                    println!(
+                        "{}{}",
+                        format!("[Thread:{}]", thread::current().name().unwrap())
+                            .as_str()
+                            .bright_purple(),
+                        "Finishing Account creation...".yellow()
+                    );
                     reqwest::get(url).unwrap();
                     return Some(Account {
                         name,
@@ -146,7 +164,7 @@ impl Series {
                 SITE,
                 name.to_ascii_lowercase().replace(" ", "-")
             )
-                .as_str(),
+            .as_str(),
         )
     }
 
@@ -179,11 +197,11 @@ impl Series {
                     "{}series/get?series={}&season={}&key={}",
                     ENDPOINT, self.id, i, TOKEN
                 )
-                    .as_str(),
+                .as_str(),
             )
-                .unwrap()
-                .text()
-                .unwrap();
+            .unwrap()
+            .text()
+            .unwrap();
             if r.starts_with("{") {
                 // if we get a valid json response the season exists
                 i += 1;
@@ -206,11 +224,11 @@ impl Season {
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-                .as_str(),
+            .as_str(),
         )
-            .unwrap()
-            .text()
-            .unwrap();
+        .unwrap()
+        .text()
+        .unwrap();
         let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
         format!(
             "{}/serie/stream/{}",
@@ -233,11 +251,11 @@ impl Season {
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-                .as_str(),
+            .as_str(),
         )
-            .unwrap()
-            .text()
-            .unwrap();
+        .unwrap()
+        .text()
+        .unwrap();
         let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
         let episodes_string: String = json["episodes"].clone().to_string();
         let episode_regex = Regex::new("\"episode\":\\d+").unwrap();
@@ -259,11 +277,11 @@ impl Episode {
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-                .as_str(),
+            .as_str(),
         )
-            .unwrap()
-            .text()
-            .unwrap();
+        .unwrap()
+        .text()
+        .unwrap();
         let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
         format!(
             "{}/serie/stream/{}/staffel-{}/episode-{}",
@@ -280,11 +298,11 @@ impl Episode {
                 "{}series/get?series={}&season={}&key={}",
                 ENDPOINT, self.id, self.season, TOKEN
             )
-                .as_str(),
+            .as_str(),
         )
-            .unwrap()
-            .text()
-            .unwrap();
+        .unwrap()
+        .text()
+        .unwrap();
         let json = serde_json::from_str(raw_json.as_str());
         if json.is_err() {
             return None;
@@ -296,10 +314,7 @@ impl Episode {
             return None;
         }
         let id_regex = Regex::new(r#"\d{2,9}"#).unwrap();
-        let id = id_regex
-            .find(link.unwrap())
-            .unwrap()
-            .as_str();
+        let id = id_regex.find(link.unwrap()).unwrap().as_str();
         Some(StreamHoster {
             name: streamer["hoster"].as_str().unwrap().to_string(),
             url: format!("{}/redirect/{}", SITE, id),
@@ -339,8 +354,14 @@ impl StreamHoster {
             println!("{}", "[!] login_key invalid".red());
             return None;
         }
-        println!("Logged in into: {}", acc.email.to_string().as_str().bright_blue());
-        println!("Resolving real location from: {}...", self.url.as_str().bright_blue());
+        println!(
+            "Logged in into: {}",
+            acc.email.to_string().as_str().bright_blue()
+        );
+        println!(
+            "Resolving real location from: {}...",
+            self.url.as_str().bright_blue()
+        );
         let r = reqwest::Client::new()
             .post(self.url.clone().as_str())
             .header("Cookie", format!("rememberLogin={}", login_key).as_str())
