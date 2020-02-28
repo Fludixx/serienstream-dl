@@ -1,4 +1,6 @@
+use crate::random_string;
 use colored::Colorize;
+use rand::distributions::Alphanumeric;
 use rand::prelude::*;
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,7 +26,7 @@ impl Email {
         }
     }
 
-    pub fn new_from_time() -> Email {
+    pub fn new_random() -> Email {
         let raw = reqwest::get("https://api4.temp-mail.org/request/domains/format/json")
             .unwrap()
             .text()
@@ -34,10 +36,10 @@ impl Email {
         Email::new_from_str(format!(
             "{}{}",
             SystemTime::now()
-                .duration_since(UNIX_EPOCH)
+                .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
-                .as_secs(),
-            domains[0],
+                .as_micros(),
+            domains[0]
         ))
     }
 

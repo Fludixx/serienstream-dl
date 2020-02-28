@@ -217,7 +217,7 @@ fn main() {
     println!("Everything should be saved in: {}/\nEnjoy!", output)
 }
 
-fn random_string(n: usize) -> String {
+pub fn random_string(n: usize) -> String {
     thread_rng().sample_iter(&Alphanumeric).take(n).collect()
 }
 
@@ -225,7 +225,7 @@ fn generate_account(amount: u32) {
     if amount == 0 {
         return;
     }
-    let acc = Account::create(random_string(8), Email::new_from_time(), random_string(8));
+    let acc = Account::create(random_string(8), Email::new_random(), random_string(8));
     if acc.is_none() {
         generate_account(amount);
         return;
