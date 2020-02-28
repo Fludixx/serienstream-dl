@@ -8,6 +8,7 @@ use std::fs::{create_dir, read_to_string, File, OpenOptions};
 use std::io::Write;
 use std::process::{exit, Command};
 use std::str::FromStr;
+use colored::Colorize;
 
 mod email;
 mod proxy;
@@ -240,7 +241,7 @@ fn download_episode(s: Series, raw: &str) -> Vec<String> {
     let mut list: Vec<&str> = list_raw.split("\n").collect();
     list.shuffle(&mut rand::thread_rng());
     if list[0].len() < 7 {
-        println!("[!] Found not valid Account.");
+        println!("{}", "[!] Found not valid Account.".red());
         return download_episode(s, raw);
     }
     let acc = Account::from_str(list[0]);

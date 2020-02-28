@@ -6,6 +6,8 @@ use reqwest::Proxy;
 use serde_json::Value;
 use std::thread;
 use std::time::Duration;
+use colored::Colorize;
+use std::ops::Add;
 
 pub const TOKEN: &str = "9bmkkkvloi4o10pnel886l1xj6ztycualnmofbkrsfzsmc26lrujoesptp8aqw";
 pub const ENDPOINT: &str = "https://s.to/api/v1/";
@@ -77,8 +79,8 @@ impl Account {
     pub fn create(name: String, email: Email, password: String) -> Option<Account> {
         let proxy_info = HttpsProxy::new();
         println!(
-            "[*] Using proxy: {}:{}",
-            proxy_info.address, proxy_info.port
+            "Using proxy: {}...",
+            format!("{}:{}", proxy_info.address, proxy_info.port).as_str().bright_blue()
         );
         let proxy =
             Proxy::https(format!("http://{}:{}", proxy_info.address, proxy_info.port).as_str())
@@ -119,7 +121,7 @@ impl Account {
                         Regex::new(r#"(https://s.to/registrierung/\?verification=[a-zA-Z0-9]+)""#)
                             .unwrap();
                     let url = r.captures(text.as_str()).unwrap().get(1).unwrap().as_str();
-                    println!("[*] Finishing Account creation");
+                    println!("{}", "Finishing Account creation...".yellow());
                     reqwest::get(url).unwrap();
                     return Some(Account {
                         name,
@@ -334,11 +336,11 @@ impl StreamHoster {
             }
         }
         if login_key.len() < 2 {
-            println!("[!] login_key invalid");
+            println!("{}", "[!] login_key invalid".red());
             return None;
         }
-        println!("[*] Logged in into: {}", acc.email.to_string());
-        println!("[*] Resolving real location from: {}", self.url);
+        println!("Logged in into: {}", acc.email.to_string().as_str().bright_blue());
+        println!("Resolving real location from: {}...", self.url.as_str().bright_blue());
         let r = reqwest::Client::new()
             .post(self.url.clone().as_str())
             .header("Cookie", format!("rememberLogin={}", login_key).as_str())
@@ -346,11 +348,11 @@ impl StreamHoster {
             .unwrap();
         let url = r.url().as_str();
         if url.contains("s.to") {
-            println!("[!] Account exceeded limit");
+            println!("{}", "[!] Account exceeded limit".red());
             return None;
         }
-        println!("[*] Resolved real location: {}", url);
-        println!("[*] Logging out");
+        println!("Resolved real location: {}", url.bright_blue());
+        println!("{}", "Logging out...".yellow());
         reqwest::Client::new()
             .get(format!("{}/logout", SITE).as_str())
             .header("Cookie", format!("rememberLogin={}", login_key).as_str())
