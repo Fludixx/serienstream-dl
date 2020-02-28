@@ -142,6 +142,7 @@ fn main() {
                     })
                     .unwrap(),
             );
+            thread::sleep(Duration::from_millis(1));
         }
         for handle in handles {
             handle.join();
