@@ -1,8 +1,14 @@
 # serienstream-dl
-How this tool works is pretty simple, it generates lots of accounts, one account can watch 9 Episodes without solving an captcha (per hour).
+To use this tool you need to create accounts. You do this by using **--generate** (Tip: combine **--generate** with **--threads** to generate multiple accounts simultaneously). After you generated some accounts, you can start downloading series. Already conpiled versions for Linux & Windows can be find in the [releases tab](https://github.com/Fludixx/serienstream-dl/releases) 
 
-**To download movies from a series use --season 0**
+### Notes
 
-**Before actually using this tool you need to generate accounts! (--generate <amount>)**
+To specify a source you can use **--name**, **--url** or **--id**
 
-![prrof](https://raw.githubusercontent.com/Fludixx/serienstream-dl/master/proof.png)
+To download movies from a series use **--season 0**
+
+### Images
+---
+
+![accountgen](https://raw.githubusercontent.com/Fludixx/serienstream-dl/master/accountgen.png)
+![proof](https://raw.githubusercontent.com/Fludixx/serienstream-dl/master/proof.png)
