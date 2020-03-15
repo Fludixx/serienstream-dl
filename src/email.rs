@@ -5,6 +5,8 @@ use rand::prelude::*;
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub const ENDPOINT: &str = "https://api4.temp-mail.org/request";
+
 #[derive(Clone)]
 pub struct Email {
     pub address: String,
@@ -27,20 +29,16 @@ impl Email {
     }
 
     pub fn new_random() -> Email {
-        let raw = reqwest::get("https://api4.temp-mail.org/request/domains/format/json")
+        let raw = reqwest::get(format!("{}/domains/format/json", ENDPOINT).as_str())
             .unwrap()
             .text()
             .unwrap();
         let mut domains: Vec<String> = serde_json::from_str(raw.as_str()).unwrap();
         domains.shuffle(&mut rand::thread_rng());
-        Email::new_from_str(format!(
-            "{}{}",
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_micros(),
-            domains[0]
-        ))
+        // why a number and not a string?
+        // well idk, looks like this email api don't like strings
+        let random: u128 = thread_rng().gen();
+        Email::new_from_str(format!("{}{}", random, domains[0]))
     }
 
     pub fn md5(&self) -> String {
@@ -48,16 +46,10 @@ impl Email {
     }
 
     pub fn get_email(&self) -> Option<String> {
-        let raw = reqwest::get(
-            format!(
-                "https://api4.temp-mail.org/request/mail/id/{}/format/json",
-                self.md5()
-            )
-            .as_str(),
-        )
-        .unwrap()
-        .text()
-        .unwrap();
+        let raw = reqwest::get(format!("{}/mail/id/{}/format/json", ENDPOINT, self.md5()).as_str())
+            .unwrap()
+            .text()
+            .unwrap();
         let v: Value = serde_json::from_str(raw.as_str()).unwrap();
         let email = v[0]["mail_text_only"].as_str();
         match email {
