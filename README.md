@@ -3,6 +3,8 @@ To use this tool you need to create accounts. You do this by using **--generate*
 
 ### Notes
 
+**Important:** To use this tool you need [youtube-dl](https://github.com/ytdl-org/youtube-dl/), install it and add it to your path 
+
 To specify a source you can use **--name**, **--url** or **--id**
 
 To download movies from a series use **--season 0**
