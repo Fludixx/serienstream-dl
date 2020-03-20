@@ -5,20 +5,23 @@ use regex::Regex;
 use reqwest::cookie::Cookie;
 use reqwest::Proxy;
 use serde_json::Value;
-use std::ops::Add;
 use std::thread;
 use std::time::Duration;
 
+// I got the token from the android app :P
 pub const TOKEN: &str = "9bmkkkvloi4o10pnel886l1xj6ztycualnmofbkrsfzsmc26lrujoesptp8aqw";
+// also from the android app, but they do have documentation on how to use the api, but I don't know
+// how complete this documentation is.
 pub const ENDPOINT: &str = "https://s.to/api/v1/";
 pub const SITE: &str = "https://s.to";
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
+#[repr(u8)]
 pub enum Language {
     German = 1,
     GermanSubtitles = 2,
     English = 3,
-    Unknown,
+    Unknown = 0,
 }
 
 impl Language {
@@ -66,18 +69,30 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn from_str(v: &str) -> Account {
+    pub fn from_str(v: &str) -> Option<Account> {
         let v = v.replace("\r", "").replace("\n", "");
         let creds: Vec<&str> = v.split(":").collect();
-        Account {
+        if creds.len() < 2 {
+            return None;
+        }
+        Some(Account {
             name: String::from("nameless"),
             email: Email::new_from_str(creds[0].to_string()),
             password: creds[1].to_string(),
-        }
+        })
     }
 
     pub fn create(name: String, email: Email, password: String) -> Option<Account> {
         let proxy_info = HttpsProxy::new();
+        if proxy_info.is_none() {
+            println!(
+                "{}",
+                "Unable to get proxy. Waiting 2 seconds before retrying...".yellow()
+            );
+            thread::sleep(Duration::from_secs(2));
+            return Account::create(name, email, password);
+        }
+        let proxy_info = proxy_info.unwrap();
         println!(
             "{}Using proxy: {}...",
             format!("[Thread:{}]", thread::current().name().unwrap())
@@ -108,7 +123,6 @@ impl Account {
         if r.is_err() {
             return Account::create(name, email, password);
         }
-        let mut r = r.unwrap();
         let mut looped: u16 = 0;
         loop {
             println!(
@@ -292,7 +306,7 @@ impl Episode {
         )
     }
 
-    pub fn get_stream_url(&self) -> Option<StreamHoster> {
+    pub fn get_stream_url(&self, language: &Language) -> Option<StreamHoster> {
         let raw_json = reqwest::get(
             format!(
                 "{}series/get?series={}&season={}&key={}",
@@ -305,10 +319,39 @@ impl Episode {
         .unwrap();
         let json = serde_json::from_str(raw_json.as_str());
         if json.is_err() {
+            println!("{}", "Something went wrong. Skipping...".red());
             return None;
         }
         let json: Value = json.unwrap();
-        let streamer = json["episodes"][self.episode as usize]["links"][0].clone();
+        let streamers = json["episodes"][self.episode as usize]["links"].clone();
+        if !streamers.is_array() {
+            println!("{}", "No streamers available. Skipping...".red());
+            return None;
+        }
+        let mut i = 0;
+        let mut streamer: Option<&Value> = None;
+        if language != &Language::Unknown {
+            while streamers.get(i).is_some() {
+                let potential_streamer = streamers.get(i).unwrap();
+                if Language::from_number(potential_streamer["language"].as_i64().unwrap())
+                    == *language
+                {
+                    streamer = Some(potential_streamer);
+                    break;
+                }
+                i += 1;
+            }
+            if streamer.is_none() {
+                println!(
+                    "{}",
+                    "Couldn't find episode with specific Language. Skipping...".red()
+                );
+                return None;
+            }
+        } else {
+            streamer = Some(&streamers[0]);
+        }
+        let streamer = streamer.unwrap();
         let link = streamer["link"].as_str();
         if link.is_none() {
             return None;
@@ -329,9 +372,9 @@ impl Episode {
 }
 
 impl StreamHoster {
-    pub fn get_site_url(&self, acc: Account) -> Option<String> {
+    pub fn get_site_url(&self, acc: &Account) -> Option<String> {
         let email = acc.email.to_string();
-        let password = acc.password;
+        let password = &acc.password;
         let params = [
             ("email", email.as_str()),
             ("password", password.as_str()),
@@ -351,7 +394,7 @@ impl StreamHoster {
             }
         }
         if login_key.len() < 2 {
-            println!("{}", "[!] login_key invalid".red());
+            println!("{}", "login_key invalid".red());
             return None;
         }
         println!(
@@ -369,7 +412,7 @@ impl StreamHoster {
             .unwrap();
         let url = r.url().as_str();
         if url.contains("s.to") {
-            println!("{}", "[!] Account exceeded limit".red());
+            println!("{}", "Account exceeded limit".red());
             return None;
         }
         println!("Resolved real location: {}", url.bright_blue());

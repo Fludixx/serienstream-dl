@@ -9,7 +9,6 @@ use std::fs::{create_dir, read_to_string, File, OpenOptions};
 use std::io::Write;
 use std::process::{exit, Command};
 use std::str::FromStr;
-use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -142,6 +141,11 @@ fn main() {
                     })
                     .unwrap(),
             );
+            if i % 10 == 0 {
+                // Proxyscrape has a limit of 10 requests/second
+                // To be safe we wait 2 seconds
+                thread::sleep(Duration::from_secs(2));
+            }
         }
         for handle in handles {
             handle.join();
@@ -198,12 +202,12 @@ fn main() {
 
     if matches.is_present("episode") {
         let raw = matches.value_of("episode").unwrap();
-        urls = download_episode(s, raw);
+        urls = download_episode(s, raw, &lang);
     } else if matches.is_present("season") {
         let raw = matches.value_of("season").unwrap();
-        urls = download_season(s, raw);
+        urls = download_season(s, raw, &lang);
     } else {
-        urls = download_series(s);
+        urls = download_series(s, &lang);
     }
 
     println!("[*] Downloading episodes via youtube-dl");
@@ -244,11 +248,11 @@ fn generate_account(amount: u32) {
     generate_account(amount - 1)
 }
 
-fn download_series(s: Series) -> Vec<String> {
+fn download_series(s: Series, language: &Language) -> Vec<String> {
     let mut urls: Vec<String> = Vec::new();
     let series_len = s.get_season_count();
     for se in 1..series_len {
-        let vec = download_season(s.clone(), format!("{}", se).as_str());
+        let vec = download_season(s.clone(), format!("{}", se).as_str(), &language);
         for vec_entry in vec {
             urls.push(vec_entry);
         }
@@ -256,12 +260,12 @@ fn download_series(s: Series) -> Vec<String> {
     urls
 }
 
-fn download_season(s: Series, raw: &str) -> Vec<String> {
+fn download_season(s: Series, raw: &str, language: &Language) -> Vec<String> {
     let mut urls: Vec<String> = Vec::new();
     let season = u32::from_str(raw).unwrap();
     let season_len = s.get_season(season).get_episode_count();
     for e in 0..season_len {
-        let vec = download_episode(s.clone(), format!("{},{}", season, e).as_str());
+        let vec = download_episode(s.clone(), format!("{},{}", season, e).as_str(), &language);
         if !vec.is_empty() {
             urls.push(vec[0].clone());
         }
@@ -269,26 +273,30 @@ fn download_season(s: Series, raw: &str) -> Vec<String> {
     urls
 }
 
-fn download_episode(s: Series, raw: &str) -> Vec<String> {
+fn download_episode(s: Series, raw: &str, language: &Language) -> Vec<String> {
     let list_raw = read_to_string("accounts.txt").unwrap();
     let mut list: Vec<&str> = list_raw.split("\n").collect();
     list.shuffle(&mut rand::thread_rng());
-    if list[0].len() < 7 {
-        println!("{}", "[!] Found not valid Account.".red());
-        return download_episode(s, raw);
-    }
     let acc = Account::from_str(list[0]);
+    if acc.is_none() {
+        // looks like whatever whe got wasn't an account. Retry.
+        return download_episode(s, raw, &language);
+    }
+    let acc = acc.unwrap();
     let mut urls: Vec<String> = Vec::new();
     let info: Vec<&str> = raw.split(",").collect();
     let season = u32::from_str(info[0]).unwrap();
     let episode = u32::from_str(info[1]).unwrap();
-    let url = s.get_season(season).get_episode(episode).get_stream_url();
+    let url = s
+        .get_season(season)
+        .get_episode(episode)
+        .get_stream_url(&language);
     if url.is_none() {
         return urls.clone();
     }
-    let url = url.unwrap().get_site_url(acc);
+    let url = url.unwrap().get_site_url(&acc);
     match url {
-        None => download_episode(s, raw),
+        None => download_episode(s, raw, &language),
         Some(url) => {
             urls.push(url);
             urls

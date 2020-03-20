@@ -1,9 +1,5 @@
-use crate::random_string;
-use colored::Colorize;
-use rand::distributions::Alphanumeric;
 use rand::prelude::*;
 use serde_json::Value;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const ENDPOINT: &str = "https://api4.temp-mail.org/request";
 
