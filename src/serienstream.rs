@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 // I got the token from the android app :P
-pub const TOKEN: &str = "9bmkkkvloi4o10pnel886l1xj6ztycualnmofbkrsfzsmc26lrujoesptp8aqw";
+pub const KEY: &str = "9bmkkkvloi4o10pnel886l1xj6ztycualnmofbkrsfzsmc26lrujoesptp8aqw";
 // also from the android app, but they do have documentation on how to use the api, but I don't know
 // how complete this documentation is.
 pub const ENDPOINT: &str = "https://s.to/api/v1/";
@@ -42,19 +42,18 @@ pub struct Series {
 
 #[derive(Clone)]
 pub struct Season {
+    pub series: Series,
     pub id: u32,
-    pub season: u32,
 }
 
 #[derive(Clone)]
 pub struct Episode {
+    pub season: Season,
     pub id: u32,
-    pub season: u32,
-    pub episode: u32,
 }
 
 #[derive(Clone)]
-pub struct StreamHoster {
+pub struct StreamHost {
     pub name: String,
     pub url: String,
     pub language: Language,
@@ -66,6 +65,40 @@ pub struct Account {
     pub name: String,
     pub email: Email,
     pub password: String,
+}
+
+#[derive(Clone)]
+pub struct Url {
+    pub episode: Episode,
+    pub host: Host,
+    pub streamer_url: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum Host {
+    Vivo,
+    Vidoza,
+    Voe,
+    GoUnlimited,
+    JetLoad,
+    UpStream,
+    VidLox,
+    Unknown,
+}
+
+impl Host {
+    pub fn from_str(str: &str) -> Self {
+        match str {
+            "Vivo" => Host::Vivo,
+            "Vidoza" => Host::Vidoza,
+            "VOE" => Host::Voe,
+            "GoUnlimited" => Host::GoUnlimited,
+            "JetLoad" => Host::JetLoad,
+            "UpStream" => Host::UpStream,
+            "VidLox" => Host::VidLox,
+            _ => Host::Unknown,
+        }
+    }
 }
 
 impl Account {
@@ -123,6 +156,13 @@ impl Account {
         if r.is_err() {
             return Account::create(name, email, password);
         }
+        let site = r.unwrap().text().unwrap();
+        let validation_regex = Regex::new(
+            r#"Dein Account wurde erfolgreich erstellt\. Um die Registrierung abzuschließen, bestätige bitte deine E-Mail-Adresse durch die an dich gesendete Mail"#,
+        ).unwrap();
+        if !validation_regex.is_match(&site) {
+            return Account::create(name, email, password);
+        }
         let mut looped: u16 = 0;
         loop {
             println!(
@@ -134,8 +174,9 @@ impl Account {
             );
             match email.get_email() {
                 None => {
-                    if looped > 14 {
-                        // after 30s cancel
+                    if looped > 29 {
+                        // after 1min cancel
+                        println!("{}", "Skipping after 2 minutes without email.".yellow());
                         return None;
                     }
                     thread::sleep(Duration::from_secs(2));
@@ -198,8 +239,8 @@ impl Series {
 
     pub fn get_season(&self, season: u32) -> Season {
         Season {
-            id: self.id,
-            season,
+            series: self.clone(),
+            id: season,
         }
     }
 
@@ -209,7 +250,7 @@ impl Series {
             let r = reqwest::get(
                 format!(
                     "{}series/get?series={}&season={}&key={}",
-                    ENDPOINT, self.id, i, TOKEN
+                    ENDPOINT, self.id, i, KEY
                 )
                 .as_str(),
             )
@@ -228,22 +269,29 @@ impl Series {
 }
 
 impl Season {
+    fn get_api_response(&self) -> Value {
+        serde_json::from_str(
+            reqwest::get(
+                format!(
+                    "{}series/get?series={}&season={}&key={}",
+                    ENDPOINT, self.series.id, self.id, KEY
+                )
+                .as_str(),
+            )
+            .unwrap()
+            .text()
+            .unwrap()
+            .as_str(),
+        )
+        .unwrap()
+    }
+
     pub fn get_series(&self) -> Series {
         Series { id: self.id }
     }
 
     pub fn get_link(&self) -> String {
-        let raw_json = reqwest::get(
-            format!(
-                "{}series/get?series={}&season={}&key={}",
-                ENDPOINT, self.id, self.season, TOKEN
-            )
-            .as_str(),
-        )
-        .unwrap()
-        .text()
-        .unwrap();
-        let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
+        let json = self.get_api_response();
         format!(
             "{}/serie/stream/{}",
             SITE,
@@ -253,24 +301,13 @@ impl Season {
 
     pub fn get_episode(&self, episode: u32) -> Episode {
         Episode {
-            id: self.id,
-            season: self.season,
-            episode,
+            season: self.clone(),
+            id: episode,
         }
     }
 
     pub fn get_episode_count(&self) -> u32 {
-        let raw_json = reqwest::get(
-            format!(
-                "{}series/get?series={}&season={}&key={}",
-                ENDPOINT, self.id, self.season, TOKEN
-            )
-            .as_str(),
-        )
-        .unwrap()
-        .text()
-        .unwrap();
-        let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
+        let json = self.get_api_response();
         let episodes_string: String = json["episodes"].clone().to_string();
         let episode_regex = Regex::new("\"episode\":\\d+").unwrap();
         episode_regex.find_iter(episodes_string.as_str()).count() as u32
@@ -278,52 +315,20 @@ impl Season {
 }
 
 impl Episode {
-    pub fn get_season(&self) -> Season {
-        Season {
-            id: self.id,
-            season: self.season,
-        }
-    }
-
     pub fn get_link(&self) -> String {
-        let raw_json = reqwest::get(
-            format!(
-                "{}series/get?series={}&season={}&key={}",
-                ENDPOINT, self.id, self.season, TOKEN
-            )
-            .as_str(),
-        )
-        .unwrap()
-        .text()
-        .unwrap();
-        let json: Value = serde_json::from_str(raw_json.as_str()).unwrap();
+        let json = self.season.get_api_response();
         format!(
             "{}/serie/stream/{}/staffel-{}/episode-{}",
             SITE,
             json["series"]["link"].as_str().unwrap(),
-            self.season,
-            self.episode + 1
+            self.season.id,
+            self.id + 1
         )
     }
 
-    pub fn get_stream_url(&self, language: &Language) -> Option<StreamHoster> {
-        let raw_json = reqwest::get(
-            format!(
-                "{}series/get?series={}&season={}&key={}",
-                ENDPOINT, self.id, self.season, TOKEN
-            )
-            .as_str(),
-        )
-        .unwrap()
-        .text()
-        .unwrap();
-        let json = serde_json::from_str(raw_json.as_str());
-        if json.is_err() {
-            println!("{}", "Something went wrong. Skipping...".red());
-            return None;
-        }
-        let json: Value = json.unwrap();
-        let streamers = json["episodes"][self.episode as usize]["links"].clone();
+    pub fn get_stream_url(&self, language: &Language) -> Option<StreamHost> {
+        let json = self.season.get_api_response();
+        let streamers = json["episodes"][self.id as usize]["links"].clone();
         if !streamers.is_array() {
             println!("{}", "No streamers available. Skipping...".red());
             return None;
@@ -358,21 +363,17 @@ impl Episode {
         }
         let id_regex = Regex::new(r#"\d{2,9}"#).unwrap();
         let id = id_regex.find(link.unwrap()).unwrap().as_str();
-        Some(StreamHoster {
+        Some(StreamHost {
             name: streamer["hoster"].as_str().unwrap().to_string(),
             url: format!("{}/redirect/{}", SITE, id),
             language: Language::from_number(streamer["language"].as_i64().unwrap()),
-            episode: Episode {
-                id: self.id,
-                season: self.season,
-                episode: self.episode,
-            },
+            episode: self.clone(),
         })
     }
 }
 
-impl StreamHoster {
-    pub fn get_site_url(&self, acc: &Account) -> Option<String> {
+impl StreamHost {
+    pub fn get_site_url(&self, acc: &Account) -> Option<Url> {
         let email = acc.email.to_string();
         let password = &acc.password;
         let params = [
@@ -394,33 +395,34 @@ impl StreamHoster {
             }
         }
         if login_key.len() < 2 {
-            println!("{}", "login_key invalid".red());
             return None;
         }
-        println!(
-            "Logged in into: {}",
-            acc.email.to_string().as_str().bright_blue()
-        );
-        println!(
-            "Resolving real location from: {}...",
-            self.url.as_str().bright_blue()
-        );
-        let r = reqwest::Client::new()
-            .post(self.url.clone().as_str())
+        let response = reqwest::Client::new()
+            .post(self.url.as_str())
             .header("Cookie", format!("rememberLogin={}", login_key).as_str())
-            .send()
-            .unwrap();
-        let url = r.url().as_str();
-        if url.contains("s.to") {
-            println!("{}", "Account exceeded limit".red());
+            .send();
+        if response.is_err() {
+            println!("{}", "Failed to resolve link.".yellow());
             return None;
         }
-        println!("Resolved real location: {}", url.bright_blue());
-        println!("{}", "Logging out...".yellow());
+        let response = response.unwrap();
+        let url = response.url().as_str();
+        if url.contains("s.to") {
+            return None;
+        }
+        println!(
+            "Resolved real location of: Season: {}, Episode: {}",
+            self.episode.season.id,
+            self.episode.id + 1
+        );
         reqwest::Client::new()
             .get(format!("{}/logout", SITE).as_str())
             .header("Cookie", format!("rememberLogin={}", login_key).as_str())
             .send();
-        Some(url.to_string())
+        Some(Url {
+            episode: self.episode.clone(),
+            host: Host::from_str(self.name.as_str()),
+            streamer_url: String::from(url),
+        })
     }
 }

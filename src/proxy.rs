@@ -1,6 +1,4 @@
-use colored::Colorize;
 use rand::prelude::SliceRandom;
-use std::process::exit;
 use std::str::FromStr;
 
 pub struct HttpsProxy {
