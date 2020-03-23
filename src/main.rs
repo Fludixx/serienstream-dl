@@ -6,8 +6,11 @@ use colored::Colorize;
 use rand::distributions::Alphanumeric;
 use rand::prelude::SliceRandom;
 use rand::{thread_rng, Rng};
+use std::error::Error;
 use std::fs::{create_dir, read_to_string, File, OpenOptions};
 use std::io::Write;
+use std::ops::Sub;
+use std::panic::resume_unwind;
 use std::process::{exit, Command};
 use std::str::FromStr;
 use std::thread;
@@ -19,6 +22,14 @@ mod proxy;
 mod serienstream;
 
 fn main() {
+    let result = run();
+    match result {
+        Ok(_) => {}
+        Err(e) => eprintln!("{}", e.description().red()),
+    }
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
     let matches = App::new("Serienstream Downloader")
         .version(clap::crate_version!())
         .author(clap::crate_authors!())
@@ -120,7 +131,9 @@ fn main() {
         .arg(
             Arg::with_name("generate-name")
                 .long("generate-name")
-                .help("Let the program decide a name for downloaded files"),
+                .help("Let the program decide a name for downloaded files")
+                .takes_value(true)
+                .default_value("true"),
         )
         .arg(
             Arg::with_name("force-youtube-dl")
@@ -142,20 +155,15 @@ fn main() {
         let mut extra_accounts = amount % threads;
         let per_thread = amount / threads;
         if File::open("accounts.txt").is_err() {
-            File::create("accounts.txt");
+            File::create("accounts.txt")?;
         }
         let mut handles = Vec::new();
         for i in 0..threads {
             println!("Starting thread: #{}...", i);
             let builder = thread::Builder::new();
-            handles.push(
-                builder
-                    .name(format!("{}", i))
-                    .spawn(move || {
-                        generate_account(per_thread + extra_accounts);
-                    })
-                    .unwrap(),
-            );
+            handles.push(builder.name(format!("{}", i)).spawn(move || {
+                generate_account(per_thread + extra_accounts).unwrap();
+            })?);
             extra_accounts = 0;
             if i % 10 == 0 {
                 // Proxyscrape has a limit of 10 requests/second
@@ -184,31 +192,34 @@ fn main() {
     }
 
     let s: Series;
-    let lang: Language;
+    let language: Language;
     let output: String;
-    let urls: Vec<Url>;
-    let generate_name = matches.is_present("generate-name");
+    let mut urls: Vec<Url> = Vec::new();
+    let generate_name = match matches.value_of("generate-name").unwrap() {
+        "true" | "1" | "yes" => true,
+        _ => false,
+    };
     let use_youtube_dl = matches.is_present("force-youtube-dl");
 
     if matches.is_present("url") {
-        s = Series::from_url(matches.value_of("url").unwrap());
+        s = Series::from_url(matches.value_of("url").unwrap())?;
     } else if matches.is_present("name") {
-        s = Series::from_name(matches.value_of("name").unwrap());
+        s = Series::from_name(matches.value_of("name").unwrap())?;
     } else if matches.is_present("id") {
-        s = Series::from_id(matches.value_of("id").unwrap().parse::<u32>().unwrap());
+        s = Series::from_id(matches.value_of("id").unwrap().parse::<u32>()?);
     } else {
         println!("You need to specify a source");
         exit(0);
     }
 
     if matches.is_present("german") {
-        lang = Language::German;
+        language = Language::German;
     } else if matches.is_present("english") {
-        lang = Language::English
+        language = Language::English
     } else if matches.is_present("gersub") {
-        lang = Language::GermanSubtitles
+        language = Language::GermanSubtitles
     } else {
-        lang = Language::Unknown
+        language = Language::Unknown
     }
 
     if matches.is_present("output") {
@@ -220,12 +231,20 @@ fn main() {
 
     if matches.is_present("episode") {
         let raw = matches.value_of("episode").unwrap();
-        urls = download_episode(&s, raw, &lang);
+        let info: Vec<&str> = raw.split(",").collect();
+        let season = u32::from_str(info[0])?;
+        let episode = u32::from_str(info[1])?;
+        if episode == 0 {
+            Err("Episodes start at 1")?
+        }
+        let episode = episode - 1;
+        urls.push(download_episode(&s, season, episode, &language)??);
     } else if matches.is_present("season") {
         let raw = matches.value_of("season").unwrap();
-        urls = download_season(&s, raw, &lang);
+        let season = u32::from_str(raw)?;
+        urls = download_season(&s, season, &language)?;
     } else {
-        urls = download_series(&s, &lang);
+        urls = download_series(&s, &language)?;
     }
 
     println!("{}", "Downloading episodes...".yellow());
@@ -239,22 +258,23 @@ fn main() {
         let absolute_output: String;
         if generate_name {
             absolute_output = format!(
-                "{}/{}-S{}-E{}.%(ext)s",
+                "{}/{} S{}E{} - {}.%(ext)s",
                 &output,
-                url.episode.season.series.id,
+                url.episode.season.get_name(),
                 url.episode.season.id,
-                url.episode.id + 1 // starts at 0
+                url.episode.id + 1, // starts at 0
+                url.episode.get_name(&language)
             );
         } else {
             absolute_output = format!("{}/%(title)s.%(ext)s", &output);
         }
         if use_youtube_dl {
-            youtube_dl(url.streamer_url.as_str(), absolute_output.as_str());
+            youtube_dl(url.streamer_url.as_str(), absolute_output.as_str())?;
             continue;
         }
-        let downloader: Option<Downloader> = match url.host {
-            Host::Vivo => vivo::new(url.streamer_url.as_str()),
-            Host::Vidoza => vidoza::new(url.streamer_url.as_str()),
+        let downloader = match url.host {
+            Host::Vivo => Some(vivo::new(url.streamer_url.as_str())),
+            Host::Vidoza => Some(vidoza::new(url.streamer_url.as_str())),
             _ => None,
         };
         if downloader.is_none() {
@@ -262,102 +282,100 @@ fn main() {
                 "{}",
                 "Unable to download video. Using youtube-dl instead.".yellow()
             );
-            youtube_dl(url.streamer_url.as_str(), absolute_output.as_str());
+            youtube_dl(url.streamer_url.as_str(), absolute_output.as_str())?;
             continue;
         }
-        let downloader = downloader.unwrap();
-        let absolute_output = absolute_output
+        let downloader = downloader.unwrap()?;
+        let mut absolute_output = absolute_output
             .replace("%(title)s", downloader.get_name().as_str())
             .replace("%(ext)s", downloader.get_extension().as_str());
-        downloader.download_to_file(&mut File::create(&absolute_output).unwrap())
+        downloader.download_to_file(&mut File::create(&absolute_output)?)?;
     }
-    println!("Everything should be saved in: {}/\nEnjoy!", output)
+    println!("Everything should be saved in: {}/\nEnjoy!", output);
+    Ok(())
 }
 
-fn youtube_dl(url: &str, output: &str) {
+fn youtube_dl(url: &str, output: &str) -> Result<(), Box<dyn Error>> {
     let mut p = Command::new("youtube-dl");
-    p.arg(url).arg("--output").arg(output).output();
+    p.arg(url).arg("--output").arg(output).output()?;
+    Ok(())
 }
 
 pub fn random_string(n: usize) -> String {
     thread_rng().sample_iter(&Alphanumeric).take(n).collect()
 }
 
-fn generate_account(amount: u32) {
+fn generate_account(amount: u32) -> Result<(), Box<dyn Error>> {
     if amount == 0 {
-        return;
+        return Ok(());
     }
-    let acc = Account::create(random_string(8), Email::new_random(), random_string(8));
-    if acc.is_none() {
-        generate_account(amount);
-        return;
+    let acc = Account::create(random_string(8), Email::new_random()?, random_string(8));
+    if acc.is_err() {
+        generate_account(amount)?;
+        return Ok(());
     }
-    let acc = acc.unwrap();
+    let acc = acc?;
     let mut file = OpenOptions::new()
         .write(true)
         .append(true)
-        .open("accounts.txt")
-        .unwrap();
+        .open("accounts.txt")?;
     write!(
         file,
         "{}",
         format!("\n{}:{}", acc.email.to_string(), acc.password)
-    );
-    generate_account(amount - 1)
+    )?;
+    generate_account(amount - 1)?;
+    Ok(())
 }
 
-fn download_series(s: &Series, language: &Language) -> Vec<Url> {
+fn download_series(s: &Series, language: &Language) -> Result<Vec<Url>, Box<dyn Error>> {
     let mut urls: Vec<Url> = Vec::new();
     let series_len = s.get_season_count();
-    for se in 1..series_len {
-        let vec = download_season(&s, format!("{}", se).as_str(), &language);
+    for season in 1..series_len {
+        let vec = download_season(&s, season, &language)?;
         for vec_entry in vec {
             urls.push(vec_entry);
         }
     }
-    urls
+    Ok(urls)
 }
 
-fn download_season(s: &Series, raw: &str, language: &Language) -> Vec<Url> {
+fn download_season(
+    s: &Series,
+    season: u32,
+    language: &Language,
+) -> Result<Vec<Url>, Box<dyn Error>> {
     let mut urls: Vec<Url> = Vec::new();
-    let season = u32::from_str(raw).unwrap();
-    let season_len = s.get_season(season).get_episode_count();
-    for e in 0..season_len {
-        let vec = download_episode(&s, format!("{},{}", season, e).as_str(), &language);
-        if !vec.is_empty() {
-            urls.push(vec[0].clone());
-        }
+    let season_len = s.get_season(season).unwrap().get_episode_count();
+    for episode in 0..season_len {
+        let url = download_episode(&s, season, episode as u32, &language);
+        urls.push(url??);
     }
-    urls
+    Ok(urls)
 }
 
-fn download_episode(s: &Series, raw: &str, language: &Language) -> Vec<Url> {
-    let list_raw = read_to_string("accounts.txt").unwrap();
+fn download_episode(
+    s: &Series,
+    season: u32,
+    episode: u32,
+    language: &Language,
+) -> Result<Result<Url, Box<dyn Error>>, Box<dyn Error>> {
+    let list_raw = read_to_string("accounts.txt")?;
     let mut list: Vec<&str> = list_raw.split("\n").collect();
     list.shuffle(&mut rand::thread_rng());
     let acc = Account::from_str(list[0]);
-    if acc.is_none() {
+    if acc.is_err() {
         // looks like whatever whe got wasn't an account. Retry.
-        return download_episode(s, raw, &language);
+        return download_episode(s, season, episode, &language);
     }
-    let acc = acc.unwrap();
-    let mut urls: Vec<Url> = Vec::new();
-    let info: Vec<&str> = raw.split(",").collect();
-    let season = u32::from_str(info[0]).unwrap();
-    let episode = u32::from_str(info[1]).unwrap();
+    let acc = acc?;
     let url = s
-        .get_season(season)
-        .get_episode(episode)
+        .get_season(season)?
+        .get_episode(episode)?
         .get_stream_url(&language);
-    if url.is_none() {
-        return urls;
+    if url.is_err() {
+        return Ok(Err(url.err().unwrap()));
     }
-    let url = url.unwrap().get_site_url(&acc);
-    match url {
-        None => download_episode(s, raw, &language),
-        Some(url) => {
-            urls.push(url);
-            urls
-        }
-    }
+    let url = url?.get_site_url(&acc);
+    Ok(url)
 }

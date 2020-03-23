@@ -1,5 +1,7 @@
 use crate::downloader::Downloader;
+use crate::serienstream::Host;
 use regex::Regex;
+use std::error::Error;
 
 fn caesar(input: String, alphabet: &str, shift: i32) -> String {
     let len = alphabet.len();
@@ -20,7 +22,7 @@ fn rot47(input: String) -> String {
     caesar(input, "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", 47)
 }
 
-pub fn new(url: &str) -> Option<Downloader> {
+pub fn new(url: &str) -> Result<Downloader, Box<dyn Error>> {
     let url = url.replace("embed/", "");
     let mut request = reqwest::get(&url).expect("Failed to reach vivo.sx");
     let site_source = request.text().unwrap();
@@ -31,19 +33,17 @@ pub fn new(url: &str) -> Option<Downloader> {
     let source_capture = source_regex.captures(site_source.as_str());
     let name_capture = name_regex.captures(site_source.as_str());
     if source_capture.is_none() || name_capture.is_none() {
-        return None;
+        Err("Failed to retrieve sources")?
     }
     let source_capture = source_capture.unwrap();
     let name_capture = name_capture.unwrap();
-    if source_capture.len() < 2 || name_capture.len() < 2 {
-        return None;
-    }
     let video_url = rot47(urlencoding::decode(source_capture.get(1).unwrap().as_str()).unwrap());
     let file_name = String::from(name_capture.get(1).unwrap().as_str());
 
-    Some(Downloader {
+    Ok(Downloader {
         url,
         video_url,
         file_name,
+        host: Host::Vivo,
     })
 }

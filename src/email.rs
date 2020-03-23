@@ -1,5 +1,6 @@
 use rand::prelude::*;
 use serde_json::Value;
+use std::error::Error;
 
 pub const ENDPOINT: &str = "https://api4.temp-mail.org/request";
 
@@ -24,33 +25,29 @@ impl Email {
         }
     }
 
-    pub fn new_random() -> Email {
-        let raw = reqwest::get(format!("{}/domains/format/json", ENDPOINT).as_str())
-            .unwrap()
-            .text()
-            .unwrap();
+    pub fn new_random() -> Result<Email, Box<dyn Error>> {
+        let raw = reqwest::get(format!("{}/domains/format/json", ENDPOINT).as_str())?.text()?;
         let mut domains: Vec<String> = serde_json::from_str(raw.as_str()).unwrap();
         domains.shuffle(&mut rand::thread_rng());
         // why a number and not a string?
         // well idk, looks like this email api don't like strings
         let random: u128 = thread_rng().gen();
-        Email::new_from_str(format!("{}{}", random, domains[0]))
+        Ok(Email::new_from_str(format!("{}{}", random, domains[0])))
     }
 
     pub fn md5(&self) -> String {
         format!("{:x}", md5::compute(self.to_string()))
     }
 
-    pub fn get_email(&self) -> Option<String> {
-        let raw = reqwest::get(format!("{}/mail/id/{}/format/json", ENDPOINT, self.md5()).as_str())
-            .unwrap()
-            .text()
-            .unwrap();
+    pub fn get_email(&self) -> Result<Option<String>, Box<dyn Error>> {
+        let raw =
+            reqwest::get(format!("{}/mail/id/{}/format/json", ENDPOINT, self.md5()).as_str())?
+                .text()?;
         let v: Value = serde_json::from_str(raw.as_str()).unwrap();
         let email = v[0]["mail_text_only"].as_str();
         match email {
-            None => None,
-            Some(s) => Some(s.to_string().clone()),
+            None => Ok(None),
+            Some(s) => Ok(Some(String::from(s))),
         }
     }
 }

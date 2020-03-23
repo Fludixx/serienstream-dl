@@ -1,4 +1,5 @@
 use crate::serienstream::Host;
+use std::error::Error;
 use std::fs::File;
 
 pub mod vidoza;
@@ -8,6 +9,7 @@ pub struct Downloader {
     url: String,
     video_url: String,
     file_name: String,
+    host: Host,
 }
 
 impl Downloader {
@@ -27,8 +29,9 @@ impl Downloader {
         String::from(self.file_name.split(".").last().unwrap())
     }
 
-    pub fn download_to_file(&self, file: &mut File) {
+    pub fn download_to_file(&self, file: &mut File) -> Result<(), Box<dyn Error>> {
         let mut video = reqwest::get(&self.video_url).expect("Failed to open video");
-        video.copy_to(file);
+        video.copy_to(file)?;
+        Ok(())
     }
 }
