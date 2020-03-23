@@ -173,6 +173,7 @@ impl Account {
         let mut looped: u16 = 0;
         loop {
             looped += 1;
+            thread::sleep(Duration::from_secs(2));
             println!(
                 "{}Fetching emails of: {}",
                 format!("[Thread:{}]", thread::current().name().unwrap_or("?"))
@@ -187,7 +188,6 @@ impl Account {
                         println!("{}", "Skipping after 1 minute without email.".yellow());
                         Err("Email timeout")?
                     }
-                    thread::sleep(Duration::from_secs(2));
                     continue;
                 }
                 Ok(text) => {
