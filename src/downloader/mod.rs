@@ -30,7 +30,7 @@ impl Downloader {
     }
 
     pub fn download_to_file(&self, file: &mut File) -> Result<(), Box<dyn Error>> {
-        let mut video = reqwest::get(&self.video_url).expect("Failed to open video");
+        let mut video = reqwest::get(&self.video_url)?;
         video.copy_to(file)?;
         Ok(())
     }

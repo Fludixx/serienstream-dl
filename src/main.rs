@@ -238,7 +238,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             Err("Episodes start at 1")?
         }
         let episode = episode - 1;
-        urls.push(download_episode(&s, season, episode, &language)??);
+        urls.push(download_episode(&s, season, episode, &language)?);
     } else if matches.is_present("season") {
         let raw = matches.value_of("season").unwrap();
         let season = u32::from_str(raw)?;
@@ -309,7 +309,7 @@ fn generate_account(amount: u32) -> Result<(), Box<dyn Error>> {
     if amount == 0 {
         return Ok(());
     }
-    let acc = Account::create(random_string(8), Email::new_random()?, random_string(8));
+    let acc = Account::create(random_string(16), Email::new_random()?, random_string(8));
     if acc.is_err() {
         generate_account(amount)?;
         return Ok(());
@@ -349,7 +349,9 @@ fn download_season(
     let season_len = s.get_season(season).unwrap().get_episode_count();
     for episode in 0..season_len {
         let url = download_episode(&s, season, episode as u32, &language);
-        urls.push(url??);
+        if url.is_ok() {
+            urls.push(url?);
+        }
     }
     Ok(urls)
 }
@@ -359,7 +361,7 @@ fn download_episode(
     season: u32,
     episode: u32,
     language: &Language,
-) -> Result<Result<Url, Box<dyn Error>>, Box<dyn Error>> {
+) -> Result<Url, Box<dyn Error>> {
     let list_raw = read_to_string("accounts.txt")?;
     let mut list: Vec<&str> = list_raw.split("\n").collect();
     list.shuffle(&mut rand::thread_rng());
@@ -374,8 +376,11 @@ fn download_episode(
         .get_episode(episode)?
         .get_stream_url(&language);
     if url.is_err() {
-        return Ok(Err(url.err().unwrap()));
+        return Err(url.err().unwrap())?;
     }
     let url = url?.get_site_url(&acc);
-    Ok(url)
+    if url.is_err() {
+        return download_episode(&s, season, episode, &language);
+    }
+    Ok(url?)
 }

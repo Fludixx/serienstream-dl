@@ -239,9 +239,9 @@ impl Series {
         let id_regex = Regex::new("series-id=\"(\\d+)\"")?;
         let result = id_regex
             .captures(r.as_str())
-            .unwrap()
+            .ok_or("Series not found")?
             .get(1)
-            .unwrap()
+            .ok_or("Series not found")?
             .as_str();
         Ok(Series {
             id: result.parse::<u32>()?,
@@ -383,10 +383,13 @@ impl Episode {
         let streamer = streamer.unwrap();
         let link = streamer["link"].as_str();
         if link.is_none() {
-            Err("Malformed api response?")?;
+            Err("No hosts available")?;
         }
         let id_regex = Regex::new(r#"\d{2,9}"#)?;
-        let id = id_regex.find(link.unwrap()).unwrap().as_str();
+        let id = id_regex
+            .find(link.unwrap())
+            .ok_or("Failed to resolve")?
+            .as_str();
         Ok(StreamHost {
             name: streamer["hoster"].as_str().unwrap().to_string(),
             url: format!("{}/redirect/{}", SITE, id),
@@ -418,7 +421,7 @@ impl StreamHost {
             }
         }
         if login_key.len() < 2 {
-            return self.get_site_url(&acc);
+            Err("login_key invalid")?
         }
         let response = reqwest::Client::new()
             .post(self.url.as_str())
@@ -426,22 +429,22 @@ impl StreamHost {
             .send();
         if response.is_err() {
             println!("{}", "Failed to resolve link.".yellow());
-            return self.get_site_url(&acc);
+            Err("Failed to resolve url")?
         }
         let response = response?;
         let url = response.url().as_str();
         if url.contains(SITE) {
-            return self.get_site_url(&acc);
+            Err("Account exceeded limits")?
         }
+        reqwest::Client::new()
+            .get(format!("{}/logout", SITE).as_str())
+            .header("Cookie", format!("rememberLogin={}", login_key).as_str())
+            .send()?;
         println!(
             "Resolved real location of: Season: {}, Episode: {}",
             self.episode.season.id,
             self.episode.id + 1
         );
-        reqwest::Client::new()
-            .get(format!("{}/logout", SITE).as_str())
-            .header("Cookie", format!("rememberLogin={}", login_key).as_str())
-            .send()?;
         Ok(Url {
             episode: self.episode.clone(),
             host: Host::from_str(self.name.as_str()),
