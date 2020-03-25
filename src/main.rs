@@ -1,4 +1,4 @@
-use crate::downloader::{vidoza, vivo, Downloader};
+use crate::downloader::{vidoza, vivo};
 use crate::email::Email;
 use crate::serienstream::{Account, Host, Language, Series, Url};
 use clap::{App, Arg};
@@ -9,8 +9,6 @@ use rand::{thread_rng, Rng};
 use std::error::Error;
 use std::fs::{create_dir, read_to_string, File, OpenOptions};
 use std::io::Write;
-use std::ops::Sub;
-use std::panic::resume_unwind;
 use std::process::{exit, Command};
 use std::str::FromStr;
 use std::thread;
@@ -22,8 +20,7 @@ mod proxy;
 mod serienstream;
 
 fn main() {
-    let result = run();
-    match result {
+    match run() {
         Ok(_) => {}
         Err(e) => eprintln!("{}", e.description().red()),
     }
@@ -268,6 +265,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         } else {
             absolute_output = format!("{}/%(title)s.%(ext)s", &output);
         }
+        let absolute_output = absolute_output.replace("/", "");
         if use_youtube_dl {
             youtube_dl(url.streamer_url.as_str(), absolute_output.as_str())?;
             continue;
