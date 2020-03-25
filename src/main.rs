@@ -260,12 +260,11 @@ fn run() -> Result<(), Box<dyn Error>> {
                 url.episode.season.get_name(),
                 url.episode.season.id,
                 url.episode.id + 1, // starts at 0
-                url.episode.get_name(&language)
+                url.episode.get_name(&language).replace("/", "")
             );
         } else {
             absolute_output = format!("{}/%(title)s.%(ext)s", &output);
         }
-        let absolute_output = absolute_output.replace("/", "");
         if use_youtube_dl {
             youtube_dl(url.streamer_url.as_str(), absolute_output.as_str())?;
             continue;
