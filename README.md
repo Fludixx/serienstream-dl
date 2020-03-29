@@ -1,4 +1,6 @@
 # serienstream-dl
+As of 2020-03-28 this tool can't generate any accounts anymore, i will look into other solutions when i find time. You can still use this tool if you manually insert accounts in the following format: `email:password` in `accounts.txt`
+
 To use this tool you need to create accounts. You do this by using **--generate** (Tip: combine **--generate** with **--threads** to generate multiple accounts simultaneously). After you generated some accounts, you can start downloading series. Already conpiled versions for Linux & Windows can be find in the [releases tab](https://github.com/Fludixx/serienstream-dl/releases) 
 
 ### Notes
