@@ -22,7 +22,7 @@ mod serienstream;
 fn main() {
     match run() {
         Ok(_) => {}
-        Err(e) => eprintln!("{}", e.description().red()),
+        Err(e) => eprintln!("{}", e.to_string()),
     }
 }
 
@@ -138,6 +138,16 @@ fn run() -> Result<(), Box<dyn Error>> {
                 .short("f")
                 .help("Use youtube-dl to download episodes"),
         )
+        .arg(
+            Arg::with_name("update")
+                .long("update")
+                .help("Don't redownload."),
+        )
+        .arg(
+            Arg::with_name("clean-account-list")
+                .long("clean")
+                .short("c"),
+        )
         .get_matches();
 
     if matches.is_present("generate") {
@@ -169,12 +179,38 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
         }
         for handle in handles {
-            handle.join();
+            let _ = handle.join();
         }
         exit(0);
     }
 
     let acclist = read_to_string("accounts.txt");
+    if matches.is_present("clean-account-list") {
+        print!("Checking accounts: ");
+        let acclist = acclist?;
+        let accounts: Vec<String> = acclist.split("\n").map(|f| f.to_string()).collect();
+        let mut new_accounts: Vec<String> = Vec::new();
+        for account_str in &accounts {
+            let account = Account::from_str(account_str.as_str());
+            if account.is_err() {
+                continue;
+            }
+            let account = account?;
+            let resp = account.login();
+            if resp.is_ok() {
+                new_accounts.push(account_str.clone());
+                print!("{}", "+".green());
+            } else {
+                print!("{}", "-".red());
+            }
+            let _ = std::io::stdout().flush();
+        }
+        println!("\n");
+        println!("Cleaned {} accounts.", accounts.len() - new_accounts.len());
+        let mut account_file = File::create("accounts.txt")?;
+        account_file.write_all(new_accounts.join("\n").as_bytes())?;
+        exit(0);
+    }
     match acclist {
         Err(_) => {
             println!("Please add some accounts first (--generate)");
@@ -197,6 +233,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         _ => false,
     };
     let use_youtube_dl = matches.is_present("force-youtube-dl");
+    let update = matches.is_present("update");
 
     if matches.is_present("url") {
         s = Series::from_url(matches.value_of("url").unwrap())?;
@@ -224,7 +261,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     } else {
         output = format!("{}", s.id);
     }
-    create_dir(output.clone());
+    let _ = create_dir(output.clone());
 
     if matches.is_present("episode") {
         let raw = matches.value_of("episode").unwrap();
@@ -254,14 +291,25 @@ fn run() -> Result<(), Box<dyn Error>> {
         );
         let absolute_output: String;
         if generate_name {
-            absolute_output = format!(
-                "{}/{} S{}E{} - {}.%(ext)s",
-                &output,
-                url.episode.season.get_name(),
-                url.episode.season.id,
-                url.episode.id + 1, // starts at 0
-                url.episode.get_name(&language).replace("/", "")
-            );
+            if url.episode.get_name(&language).starts_with("Episode") {
+                absolute_output = format!(
+                    "{}/{} S{}E{}.%(ext)s",
+                    &output,
+                    url.episode.season.get_name(),
+                    url.episode.season.id,
+                    url.episode.id + 1, // starts at 0
+                );
+            } else {
+                absolute_output = format!(
+                    "{}/{} S{}E{} - {}.%(ext)s",
+                    &output,
+                    url.episode.season.get_name(),
+                    url.episode.season.id,
+                    url.episode.id + 1, // starts at 0
+                    url.episode.get_name(&language).replace("/", "")
+                );
+                absolute_output.as_bytes();
+            }
         } else {
             absolute_output = format!("{}/%(title)s.%(ext)s", &output);
         }
@@ -283,9 +331,13 @@ fn run() -> Result<(), Box<dyn Error>> {
             continue;
         }
         let downloader = downloader.unwrap()?;
-        let mut absolute_output = absolute_output
+        let absolute_output = absolute_output
             .replace("%(title)s", downloader.get_name().as_str())
             .replace("%(ext)s", downloader.get_extension().as_str());
+        if File::open(&absolute_output).is_ok() && update {
+            println!("Already exists. Skipping...");
+            continue;
+        }
         downloader.download_to_file(&mut File::create(&absolute_output)?)?;
     }
     println!("Everything should be saved in: {}/\nEnjoy!", output);

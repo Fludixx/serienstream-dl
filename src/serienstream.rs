@@ -119,6 +119,30 @@ impl Account {
         })
     }
 
+    pub fn login(&self) -> Result<String, Box<dyn Error>> {
+        let params = [
+            ("email", self.email.to_string()),
+            ("password", self.password.clone()),
+            ("autoLogin", "off".to_string()),
+        ];
+        let login = reqwest::Client::new()
+            .post(format!("{}/login", SITE).as_str())
+            .form(&params)
+            .send()?;
+        let cookies: Vec<Cookie> = login.cookies().collect();
+        let mut login_key = String::new();
+        for cookie in cookies {
+            if cookie.name() == "rememberLogin" {
+                login_key = cookie.value().to_string();
+                break;
+            }
+        }
+        if login_key.len() < 2 {
+            Err("login_key invalid")?
+        }
+        Ok(login_key)
+    }
+
     pub fn create(name: String, email: Email, password: String) -> Result<Account, Box<dyn Error>> {
         let proxy_info = HttpsProxy::new();
         if proxy_info.is_err() {
@@ -401,28 +425,7 @@ impl Episode {
 
 impl StreamHost {
     pub fn get_site_url(&self, acc: &Account) -> Result<Url, Box<dyn Error>> {
-        let email = acc.email.to_string();
-        let password = &acc.password;
-        let params = [
-            ("email", email.as_str()),
-            ("password", password.as_str()),
-            ("autoLogin", "on"),
-        ];
-        let login = reqwest::Client::new()
-            .post(format!("{}/login", SITE).as_str())
-            .form(&params)
-            .send()?;
-        let cookies: Vec<Cookie> = login.cookies().collect();
-        let mut login_key = String::new();
-        for cookie in cookies {
-            if cookie.name() == "rememberLogin" {
-                login_key = cookie.value().to_string();
-                break;
-            }
-        }
-        if login_key.len() < 2 {
-            Err("login_key invalid")?
-        }
+        let login_key = acc.login()?;
         let response = reqwest::Client::new()
             .post(self.url.as_str())
             .header("Cookie", format!("rememberLogin={}", login_key).as_str())
